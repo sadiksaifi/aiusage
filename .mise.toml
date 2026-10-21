@@ -1,0 +1,44 @@
+[tools]
+go = "1.27.3"
+golangci-lint = "2.15.0"
+
+[env]
+CGO_ENABLED = "0"
+
+[tasks.start]
+description = "Run aiusage from source"
+run = "go run ./cmd/aiusage"
+raw = true
+
+[tasks.build]
+description = "Build the aiusage binary"
+run = "go build -o bin/aiusage ./cmd/aiusage"
+
+[tasks."build:all"]
+description = "Build macOS and Linux binaries for x86_64 and arm64"
+run = [
+  "GOOS=darwin GOARCH=amd64 go build -o dist/aiusage-darwin-x86_64 ./cmd/aiusage",
+  "GOOS=darwin GOARCH=arm64 go build -o dist/aiusage-darwin-arm64 ./cmd/aiusage",
+  "GOOS=linux GOARCH=amd64 go build -o dist/aiusage-linux-x86_64 ./cmd/aiusage",
+  "GOOS=linux GOARCH=arm64 go build -o dist/aiusage-linux-arm64 ./cmd/aiusage",
+]
+
+[tasks.install]
+description = "Install aiusage into ~/.local/bin"
+run = 'GOBIN="$HOME/.local/bin" go install ./cmd/aiusage'
+
+[tasks.fmt]
+description = "Format Go source and imports"
+run = "golangci-lint fmt"
+
+[tasks.lint]
+description = "Check Go source"
+run = "golangci-lint run"
+
+[tasks.test]
+description = "Test usage responses, countdowns, and display"
+run = "go test ./..."
+
+[tasks.check]
+description = "Run lint and tests"
+depends = ["lint", "test"]

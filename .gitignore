@@ -1,0 +1,12 @@
+/aiusage
+/bin/
+/dist/
+*.test
+coverage*
+*.prof
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+.DS_Store

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"charm.land/fang/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
@@ -38,8 +39,17 @@ func Run(ctx context.Context) error {
 			}
 			_, noColor := os.LookupEnv("NO_COLOR")
 			colors := term.IsTerminal(os.Stdout.Fd()) && !noColor && os.Getenv("TERM") != "dumb"
+			width, dark := 120, true
+			if term.IsTerminal(os.Stdout.Fd()) {
+				if columns, _, err := term.GetSize(os.Stdout.Fd()); err == nil {
+					width = columns
+				}
+				if colors {
+					dark = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+				}
+			}
 			output := colorprofile.NewWriter(cmd.OutOrStdout(), os.Environ())
-			_, err = fmt.Fprintln(output, render(data, colors))
+			_, err = fmt.Fprintln(output, render(data, colors, width, dark))
 			return err
 		},
 	}

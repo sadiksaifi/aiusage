@@ -107,28 +107,54 @@ func render(data report, colors bool, width int, dark bool) string {
 	if len(sections) == 0 {
 		return "\n  No usage data available.\n"
 	}
+	tableWidth := 4 + 3*(len(headers)-1)
+	for _, columnWidth := range widths {
+		tableWidth += columnWidth
+	}
+	stacked := width > 0 && tableWidth > width
 	var output []string
 	for _, section := range sections {
-		t := table.New().Headers(headers...).Rows(section.rows...).
-			Border(lipgloss.HiddenBorder()).BorderTop(false).BorderBottom(false).
-			BorderLeft(false).BorderRight(false).BorderColumn(false).BorderHeader(false).
-			StyleFunc(func(row, column int) lipgloss.Style {
-				padding := 3
-				if column == len(headers)-1 {
-					padding = 0
+		var body string
+		if stacked {
+			var blocks []string
+			for _, row := range section.rows {
+				lines := []string{paint(row[0], theme.Base, true)}
+				if row[1] != "" {
+					lines[0] += "  " + row[1] + " used"
 				}
-				style := lipgloss.NewStyle().Width(widths[column] + padding).PaddingRight(padding)
-				if row == table.HeaderRow {
-					style = style.PaddingBottom(1)
-					if colors {
-						style = style.Foreground(theme.Comment)
+				for column := 2; column < len(row); column++ {
+					if row[column] != "" {
+						lines = append(lines, strings.ToLower(headers[column])+": "+row[column])
 					}
 				}
-				return style
-			})
-		body := t.String()
+				blocks = append(blocks, strings.Join(lines, "\n"))
+			}
+			body = strings.Join(blocks, "\n\n")
+		} else {
+			t := table.New().Headers(headers...).Rows(section.rows...).
+				Border(lipgloss.HiddenBorder()).BorderTop(false).BorderBottom(false).
+				BorderLeft(false).BorderRight(false).BorderColumn(false).BorderHeader(false).
+				StyleFunc(func(row, column int) lipgloss.Style {
+					padding := 3
+					if column == len(headers)-1 {
+						padding = 0
+					}
+					style := lipgloss.NewStyle().Width(widths[column] + padding).PaddingRight(padding)
+					if row == table.HeaderRow {
+						style = style.PaddingBottom(1)
+						if colors {
+							style = style.Foreground(theme.Comment)
+						}
+					}
+					return style
+				})
+			body = t.String()
+		}
 		for _, detail := range section.details {
 			body += "\n" + paint(detail, theme.Comment, false)
+		}
+		if width > 4 {
+			body = ansi.Wrap(body, width-4, "")
 		}
 		output = append(output, "  "+paint(strings.ToUpper(section.name), theme.Title, true)+"\n\n"+lipgloss.NewStyle().MarginLeft(4).Render(body))
 	}

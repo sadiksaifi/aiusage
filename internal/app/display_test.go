@@ -17,10 +17,10 @@ func mustJSON(t *testing.T, value any) string {
 }
 
 func TestDisplayOmitsNullsButKeepsZeroAndCountdown(t *testing.T) {
-	report := report{Claude: windows{FiveHour: window{"utilization": float64(0), "resets_at": "Thu 22 Oct, 01:02", "resets_in": "1h 2m", "used_dollars": float64(0), "locked_reason": nil}}, Codex: windows{SevenDay: window{"used_percent": float64(94)}}}
-	for _, width := range []int{40, 80, 120} {
+	report := report{Claude: windows{FiveHour: window{"utilization": float64(0), "resets_at": "Thu 22 Oct, 01:02", "resets_in": "1h 2m", "used_dollars": float64(0), "locked_reason": nil}}, Codex: windows{SevenDay: window{"used_percent": float64(100), "resets_at": "Thu 22 Oct, 01:02", "resets_in": "6d 23h 59m"}}}
+	for _, width := range []int{30, 35, 40, 80, 120} {
 		text := render(report, false, width, true)
-		for _, value := range []string{"CLAUDE", "CODEX", "5-hour", "7-day", "0%", "94%", "Thu 22 Oct, 01:02", "1h 2m", "used dollars: 0"} {
+		for _, value := range []string{"CLAUDE", "CODEX", "5-hour", "7-day", "0%", "100%", "Thu 22 Oct, 01:02", "1h 2m", "6d 23h 59m", "used dollars: 0"} {
 			require.Contains(t, text, value)
 		}
 		require.NotContains(t, text, "locked reason")

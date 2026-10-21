@@ -4,10 +4,8 @@ Claude Code and Codex usage, with local reset times and countdowns.
 
 ## Install macOS/Linux
 
-From this checkout:
-
 ```sh
-CGO_ENABLED=0 GOBIN="$HOME/.local/bin" go install ./cmd/aiusage
+CGO_ENABLED=0 go install github.com/sadiksaifi/aiusage/cmd/aiusage@latest
 ```
 
 ## Usage

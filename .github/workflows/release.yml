@@ -59,3 +59,39 @@ jobs:
         run: mise exec -- goreleaser release --clean --release-notes "$RUNNER_TEMP/release-notes.txt"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  homebrew:
+    needs: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: homebrew-aiusage
+      cancel-in-progress: false
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      # Keep retry tooling on the workflow ref, not the historical release tag.
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: sadiksaifi/homebrew-tap
+          ref: main
+          token: ${{ secrets.HOMEBREW_TAP_PAT }}
+          path: homebrew-tap
+      - name: Generate Homebrew formula
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 \
+            "https://github.com/$GITHUB_REPOSITORY/archive/refs/tags/$RELEASE_TAG.tar.gz" \
+            -o "$RUNNER_TEMP/source.tar.gz"
+          sh .github/scripts/update-homebrew.sh "$RELEASE_TAG" "$RUNNER_TEMP/source.tar.gz" homebrew-tap
+      - name: Publish Homebrew formula
+        working-directory: homebrew-tap
+        run: |
+          if [ ! -f Formula/aiusage.rb ]; then exit 0; fi
+          git add Formula/aiusage.rb
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "chore: update aiusage to $RELEASE_TAG"
+          # A concurrent tap write must fail rather than rebase a stale formula over it.
+          git push origin HEAD:main

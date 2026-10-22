@@ -1,6 +1,14 @@
 [tools]
 go = "1.27.3"
 golangci-lint = "2.15.0"
+node = "24.21.0"
+"npm:tagsmith" = { version = "1.2.0", allow_low_downloads = true }
+goreleaser = "2.18.3"
+git-cliff = "2.14.2"
+cocogitto = "7.0.0"
+
+[hooks]
+postinstall = "git config --local core.hooksPath .githooks"
 
 [env]
 CGO_ENABLED = "0"
@@ -42,3 +50,7 @@ run = "go test ./..."
 [tasks.check]
 description = "Run lint and tests"
 depends = ["lint", "test"]
+
+[tasks."release:check"]
+description = "Validate release configuration"
+run = ["tagsmith targets --json", "goreleaser check"]

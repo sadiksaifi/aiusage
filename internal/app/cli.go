@@ -16,12 +16,18 @@ import (
 )
 
 func Run(ctx context.Context) error {
-	var jsonOutput bool
+	var jsonOutput, upgradeRequested bool
 	cmd := &cobra.Command{
 		Use:   "aiusage",
 		Short: "See Claude Code and Codex usage and reset times",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if upgradeRequested {
+				if cmd.Flags().NFlag() > 1 {
+					return fmt.Errorf("use --upgrade on its own, without other flags")
+				}
+				return upgrade(cmd.Context(), cmd.OutOrStdout())
+			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), 35*time.Second)
 			defer cancel()
 			auth, err := loadCredentials(ctx)
@@ -53,6 +59,7 @@ func Run(ctx context.Context) error {
 			return err
 		},
 	}
+	cmd.Flags().BoolVar(&upgradeRequested, "upgrade", false, "Upgrade to the latest stable release with SHA-256 verification")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Print full JSON, including null fields")
-	return fang.Execute(ctx, cmd, fang.WithNotifySignal(os.Interrupt, syscall.SIGTERM))
+	return fang.Execute(ctx, cmd, fang.WithVersion(currentVersion()), fang.WithNotifySignal(os.Interrupt, syscall.SIGTERM))
 }

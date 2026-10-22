@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable tag to release or retry
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@v5
+        with:
+          cache: true
+          install_args: go node npm:tagsmith goreleaser git-cliff
+      # A retry can repair release tooling without moving the published tag.
+      - name: Check out release source
+        if: github.event_name == 'workflow_dispatch'
+        run: git checkout --detach "refs/tags/$RELEASE_TAG"
+      - name: Validate stable release tag
+        run: |
+          git fetch --force --tags origin
+          mise exec -- tagsmith validate --tag "$RELEASE_TAG" --channel stable --github-output
+      - name: Cache Go modules and build output
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-
+      - name: Test
+        run: mise run test
+      - name: Generate release notes
+        run: mise exec -- git-cliff --current > "$RUNNER_TEMP/release-notes.txt"
+      - name: Publish release
+        run: mise exec -- goreleaser release --clean --release-notes "$RUNNER_TEMP/release-notes.txt"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

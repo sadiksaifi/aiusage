@@ -1,0 +1,26 @@
+version: 2
+
+project_name: aiusage
+
+builds:
+  - main: ./cmd/aiusage
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/sadiksaifi/aiusage/internal/app.version={{ .Tag }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+  extra_files:
+    - glob: ./install.sh
+
+release:
+  prerelease: false
+  extra_files:
+    - glob: ./install.sh

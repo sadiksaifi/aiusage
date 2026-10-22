@@ -25,15 +25,18 @@ func currentVersion() string {
 }
 
 func upgrade(ctx context.Context, out io.Writer) error {
+	path, err := selfupdate.ExecutablePath()
+	if err != nil {
+		return err
+	}
+	if isHomebrewPath(path) {
+		return upgradeHomebrew(ctx, out, path)
+	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	updater, err := selfupdate.NewUpdater(selfupdate.Config{
 		Validator: &selfupdate.ChecksumValidator{UniqueFilename: "checksums.txt"},
 	})
-	if err != nil {
-		return err
-	}
-	path, err := selfupdate.ExecutablePath()
 	if err != nil {
 		return err
 	}

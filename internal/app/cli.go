@@ -59,7 +59,7 @@ func Run(ctx context.Context) error {
 			return err
 		},
 	}
-	cmd.Flags().BoolVar(&upgradeRequested, "upgrade", false, "Upgrade to the latest stable release with SHA-256 verification")
+	cmd.Flags().BoolVar(&upgradeRequested, "upgrade", false, "Upgrade via Homebrew or a SHA-256-verified release download")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Print full JSON, including null fields")
 	return fang.Execute(ctx, cmd, fang.WithVersion(currentVersion()), fang.WithNotifySignal(os.Interrupt, syscall.SIGTERM))
 }

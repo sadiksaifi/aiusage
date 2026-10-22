@@ -9,6 +9,10 @@ on:
         description: Existing stable tag to release or retry
         required: true
         type: string
+      homebrew_only:
+        description: Retry only the formula for an already-published stable release
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,6 +23,7 @@ concurrency:
 
 jobs:
   release:
+    if: ${{ !inputs.homebrew_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -62,16 +67,33 @@ jobs:
 
   homebrew:
     needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.homebrew_only)) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     concurrency:
       group: homebrew-aiusage
       cancel-in-progress: false
+      queue: max
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       # Keep retry tooling on the workflow ref, not the historical release tag.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@v5
+        with:
+          cache: true
+          install_args: node npm:tagsmith
+      - name: Validate published stable release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mise exec -- tagsmith validate --tag "$RELEASE_TAG" --channel stable --github-output
+          if [ "$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease --jq '.isDraft or .isPrerelease')" != false ]; then
+            echo "Homebrew requires a published stable GitHub release." >&2
+            exit 1
+          fi
       - uses: actions/checkout@v7
         with:
           repository: sadiksaifi/homebrew-tap

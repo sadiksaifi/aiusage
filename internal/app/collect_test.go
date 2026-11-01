@@ -45,6 +45,18 @@ func TestCollectDoesNotExposeHTTPErrorBody(t *testing.T) {
 	require.ErrorContains(t, err, "sign in")
 }
 
+func TestCollectReportsRateLimitRetryTime(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "300")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	c := client{http: server.Client(), claudeURL: server.URL, codexURL: server.URL}
+	_, err := c.collect(context.Background(), credentials{}, time.Now())
+	require.ErrorContains(t, err, "429")
+	require.ErrorContains(t, err, "rate limited; retry in 5m")
+}
+
 func TestCountdownBoundaries(t *testing.T) {
 	for _, test := range []struct {
 		seconds int

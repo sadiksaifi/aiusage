@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -47,8 +48,11 @@ func (c client) get(ctx context.Context, url, token string, headers map[string]s
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		hint := ""
-		if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+		switch response.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
 			hint = "; sign in again using the provider CLI"
+		case http.StatusTooManyRequests:
+			hint = "; rate limited; retry " + retryAfter(response.Header.Get("Retry-After"))
 		}
 		return fmt.Errorf("usage API returned HTTP %d%s", response.StatusCode, hint)
 	}
@@ -56,6 +60,20 @@ func (c client) get(ctx context.Context, url, token string, headers map[string]s
 		return fmt.Errorf("invalid usage response: %w", err)
 	}
 	return nil
+}
+
+// retryAfter reads a Retry-After value, which is either delay seconds or an HTTP date.
+func retryAfter(value string) string {
+	var wait time.Duration
+	if seconds, err := strconv.Atoi(value); err == nil {
+		wait = time.Duration(seconds) * time.Second
+	} else if at, err := http.ParseTime(value); err == nil {
+		wait = time.Until(at)
+	}
+	if wait <= 0 {
+		return "later"
+	}
+	return "in " + countdown(wait)
 }
 
 func (c client) collect(ctx context.Context, auth credentials, now time.Time) (report, error) {

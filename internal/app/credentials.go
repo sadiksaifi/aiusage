@@ -3,33 +3,61 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 )
 
-type credentials struct {
-	claudeToken string
-	codexToken  string
-	accountID   string
+// errSignedOut marks a provider with no stored login, which aiusage leaves out of its display.
+var errSignedOut = errors.New("not signed in")
+
+// login is one provider's credentials, or the reason they could not be read.
+type login struct {
+	token   string
+	account string // Codex only
+	source  string // where the token came from, named when the provider rejects it
+	err     error
 }
 
-func loadCredentials(ctx context.Context) (credentials, error) {
+type credentials struct {
+	claude login
+	codex  login
+}
+
+func loadCredentials(ctx context.Context) credentials {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return credentials{}, fmt.Errorf("find home directory: %w", err)
+		err = fmt.Errorf("find home directory: %w", err)
+		return credentials{claude: login{err: err}, codex: login{err: err}}
 	}
-	claudeDir := os.Getenv("CLAUDE_CONFIG_DIR")
-	if claudeDir == "" {
-		claudeDir = filepath.Join(home, ".claude")
+	return credentials{claude: loadClaude(ctx, home), codex: loadCodex(home)}
+}
+
+// loadClaude reads the Keychain first on macOS because Claude Code writes logins there.
+// A .credentials.json file there can be a stale leftover, so it is only a fallback.
+func loadClaude(ctx context.Context, home string) login {
+	dir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if dir == "" {
+		dir = filepath.Join(home, ".claude")
 	}
-	data, err := os.ReadFile(filepath.Join(claudeDir, ".credentials.json"))
-	if err != nil && os.IsNotExist(err) && runtime.GOOS == "darwin" {
-		data, err = claudeKeychain(ctx, claudeDir)
+	source := "macOS Keychain"
+	data, err := claudeKeychain(ctx, dir)
+	if err != nil {
+		file := filepath.Join(dir, ".credentials.json")
+		fileData, fileErr := os.ReadFile(file)
+		switch {
+		case fileErr == nil:
+			source, data, err = file, fileData, nil
+		case !os.IsNotExist(fileErr):
+			err = fileErr
+		}
+	}
+	if errors.Is(err, errSignedOut) {
+		return login{err: fmt.Errorf("%w; run `claude` to sign in", err)}
 	}
 	if err != nil {
-		return credentials{}, fmt.Errorf("read Claude credentials: %w; run `claude` to sign in", err)
+		return login{err: fmt.Errorf("read credentials: %w; run `claude` to sign in", err)}
 	}
 	var claude struct {
 		OAuth struct {
@@ -37,18 +65,26 @@ func loadCredentials(ctx context.Context) (credentials, error) {
 		} `json:"claudeAiOauth"`
 	}
 	if err := json.Unmarshal(data, &claude); err != nil {
-		return credentials{}, fmt.Errorf("invalid Claude credentials; run `claude` to sign in")
+		return login{err: fmt.Errorf("invalid credentials in %s; run `claude` to sign in", source)}
 	}
 	if claude.OAuth.AccessToken == "" {
-		return credentials{}, fmt.Errorf("no Claude access token; run `claude` to sign in")
+		return login{err: fmt.Errorf("no access token in %s; run `claude` to sign in", source)}
 	}
-	codexDir := os.Getenv("CODEX_HOME")
-	if codexDir == "" {
-		codexDir = filepath.Join(home, ".codex")
+	return login{token: claude.OAuth.AccessToken, source: source}
+}
+
+func loadCodex(home string) login {
+	dir := os.Getenv("CODEX_HOME")
+	if dir == "" {
+		dir = filepath.Join(home, ".codex")
 	}
-	data, err = os.ReadFile(filepath.Join(codexDir, "auth.json"))
+	file := filepath.Join(dir, "auth.json")
+	data, err := os.ReadFile(file)
+	if os.IsNotExist(err) {
+		return login{err: fmt.Errorf("%w; run `codex login` with file credential storage", errSignedOut)}
+	}
 	if err != nil {
-		return credentials{}, fmt.Errorf("read Codex credentials: %w; run `codex login` with file credential storage", err)
+		return login{err: fmt.Errorf("read credentials: %w; run `codex login` with file credential storage", err)}
 	}
 	var codex struct {
 		Tokens struct {
@@ -57,10 +93,10 @@ func loadCredentials(ctx context.Context) (credentials, error) {
 		} `json:"tokens"`
 	}
 	if err := json.Unmarshal(data, &codex); err != nil {
-		return credentials{}, fmt.Errorf("invalid Codex credentials; run `codex login` to sign in")
+		return login{err: fmt.Errorf("invalid credentials in %s; run `codex login` to sign in", file)}
 	}
 	if codex.Tokens.AccessToken == "" || codex.Tokens.AccountID == "" {
-		return credentials{}, fmt.Errorf("no Codex ChatGPT login; run `codex login` to sign in")
+		return login{err: fmt.Errorf("no ChatGPT login in %s; run `codex login` to sign in", file)}
 	}
-	return credentials{claudeToken: claude.OAuth.AccessToken, codexToken: codex.Tokens.AccessToken, accountID: codex.Tokens.AccountID}, nil
+	return login{token: codex.Tokens.AccessToken, account: codex.Tokens.AccountID, source: file}
 }

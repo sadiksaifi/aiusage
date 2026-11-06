@@ -21,10 +21,12 @@ func render(data report, colors bool, width int, dark bool) string {
 		}
 		return lipgloss.NewStyle().Foreground(foreground).Bold(bold).Render(text)
 	}
+	alert := lipgloss.LightDark(dark)(lipgloss.Color("#B91C1C"), lipgloss.Color("#FCA5A5"))
 	type section struct {
 		name    string
 		rows    [][]string
 		details []string
+		failure string
 	}
 	var sections []section
 	headers := []string{"WINDOW", "USAGE", "RESETS IN", "RESETS AT"}
@@ -41,6 +43,12 @@ func render(data report, colors bool, width int, dark bool) string {
 		name    string
 		windows windows
 	}{{"Claude", data.Claude}, {"Codex", data.Codex}} {
+		if failure := provider.windows.Error; failure != nil {
+			if !provider.windows.signedOut {
+				sections = append(sections, section{name: provider.name, failure: *failure})
+			}
+			continue
+		}
 		block := section{name: provider.name}
 		for _, item := range []struct {
 			name   string
@@ -58,7 +66,7 @@ func render(data report, colors bool, width int, dark bool) string {
 			if ok {
 				shade := lipgloss.LightDark(dark)(lipgloss.Color("#15803D"), lipgloss.Color("#86EFAC"))
 				if used >= 90 {
-					shade = lipgloss.LightDark(dark)(lipgloss.Color("#B91C1C"), lipgloss.Color("#FCA5A5"))
+					shade = alert
 				} else if used >= 70 {
 					shade = lipgloss.LightDark(dark)(lipgloss.Color("#A16207"), lipgloss.Color("#FDE68A"))
 				}
@@ -115,7 +123,9 @@ func render(data report, colors bool, width int, dark bool) string {
 	var output []string
 	for _, section := range sections {
 		var body string
-		if stacked {
+		if section.failure != "" {
+			body = paint(section.failure, alert, false)
+		} else if stacked {
 			var blocks []string
 			for _, row := range section.rows {
 				lines := []string{paint(row[0], theme.Base, true)}

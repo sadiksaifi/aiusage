@@ -2,9 +2,9 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -27,34 +27,47 @@ func TestCollectPreservesFieldsAndAddsResetCountdown(t *testing.T) {
 	}))
 	defer server.Close()
 	c := client{http: server.Client(), claudeURL: server.URL + "/claude", codexURL: server.URL + "/codex"}
-	report, err := c.collect(context.Background(), credentials{claudeToken: "claude-token", codexToken: "codex-token", accountID: "account"}, now)
-	require.NoError(t, err)
-	require.JSONEq(t, `{"claude":{"five_hour":{"utilization":84,"resets_at":"Thu 22 Oct, 01:02","resets_in":"1h 2m","used_dollars":0,"locked_reason":null},"seven_day":null},"codex":{"five_hour":null,"seven_day":{"used_percent":20,"resets_at":"Fri 23 Oct, 00:02","resets_in":"1d 2m"}}}`, mustJSON(t, report))
+	report := c.collect(context.Background(), credentials{claude: login{token: "claude-token"}, codex: login{token: "codex-token", account: "account"}}, now)
+	require.NoError(t, report.err())
+	require.JSONEq(t, `{"claude":{"five_hour":{"utilization":84,"resets_at":"Thu 22 Oct, 01:02","resets_in":"1h 2m","used_dollars":0,"locked_reason":null},"seven_day":null,"error":null},"codex":{"five_hour":null,"seven_day":{"used_percent":20,"resets_at":"Fri 23 Oct, 00:02","resets_in":"1d 2m"},"error":null}}`, mustJSON(t, report))
 }
 
-func TestCollectDoesNotExposeHTTPErrorBody(t *testing.T) {
+func TestCollectKeepsOtherProviderWhenOneIsRejected(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte("sensitive-response"))
+		if r.URL.Path == "/claude" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("sensitive-response"))
+			return
+		}
+		_, _ = w.Write([]byte(`{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000,"reset_at":null}}}`))
 	}))
 	defer server.Close()
-	c := client{http: server.Client(), claudeURL: server.URL, codexURL: server.URL}
-	_, err := c.collect(context.Background(), credentials{}, time.Now())
-	require.ErrorContains(t, err, "401")
-	require.False(t, strings.Contains(err.Error(), "sensitive-response"))
-	require.ErrorContains(t, err, "sign in")
+	c := client{http: server.Client(), claudeURL: server.URL + "/claude", codexURL: server.URL + "/codex"}
+	report := c.collect(context.Background(), credentials{claude: login{source: "macOS Keychain"}, codex: login{source: "auth.json"}}, time.Now())
+	require.NoError(t, report.err())
+	require.NotNil(t, report.Claude.Error)
+	require.Contains(t, *report.Claude.Error, "401")
+	require.Contains(t, *report.Claude.Error, "sign in again using the provider CLI (token read from macOS Keychain)")
+	require.NotContains(t, *report.Claude.Error, "sensitive-response")
+	require.Nil(t, report.Codex.Error)
+	require.Equal(t, float64(20), report.Codex.FiveHour["used_percent"])
 }
 
-func TestCollectReportsRateLimitRetryTime(t *testing.T) {
+func TestCollectFailsOnlyWhenEveryProviderFails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "300")
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer server.Close()
 	c := client{http: server.Client(), claudeURL: server.URL, codexURL: server.URL}
-	_, err := c.collect(context.Background(), credentials{}, time.Now())
-	require.ErrorContains(t, err, "429")
-	require.ErrorContains(t, err, "rate limited; retry in 5m")
+	signedOut := credentials{codex: login{err: fmt.Errorf("%w; run `codex login`", errSignedOut)}}
+	err := c.collect(context.Background(), signedOut, time.Now()).err()
+	require.EqualError(t, err, "no usage to show\nClaude: usage API returned HTTP 429; rate limited; retry in 5m\nCodex: not signed in; run `codex login`")
+}
+
+func TestMissingCodexLoginCountsAsSignedOut(t *testing.T) {
+	t.Setenv("CODEX_HOME", t.TempDir())
+	require.ErrorIs(t, loadCodex(t.TempDir()).err, errSignedOut)
 }
 
 func TestCountdownBoundaries(t *testing.T) {

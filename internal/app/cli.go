@@ -30,12 +30,8 @@ func Run(ctx context.Context) error {
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), 35*time.Second)
 			defer cancel()
-			auth, err := loadCredentials(ctx)
-			if err != nil {
-				return err
-			}
-			data, err := newClient().collect(ctx, auth, time.Now())
-			if err != nil {
+			data := newClient().collect(ctx, loadCredentials(ctx), time.Now())
+			if err := data.err(); err != nil {
 				return err
 			}
 			if jsonOutput {
@@ -55,7 +51,7 @@ func Run(ctx context.Context) error {
 				}
 			}
 			output := colorprofile.NewWriter(cmd.OutOrStdout(), os.Environ())
-			_, err = fmt.Fprintln(output, render(data, colors, width, dark))
+			_, err := fmt.Fprintln(output, render(data, colors, width, dark))
 			return err
 		},
 	}

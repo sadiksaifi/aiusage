@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -32,4 +33,12 @@ func TestDisplayOmitsNullsButKeepsZeroAndCountdown(t *testing.T) {
 	}
 	require.Contains(t, render(report, true, 120, true), "\x1b[")
 	require.Contains(t, mustJSON(t, report), `"locked_reason":null`)
+}
+
+func TestDisplayShowsFailedProviderAndHidesSignedOutOne(t *testing.T) {
+	report := report{Claude: failed(fmt.Errorf("usage API returned HTTP 401")), Codex: failed(fmt.Errorf("%w; run `codex login`", errSignedOut))}
+	text := render(report, false, 80, true)
+	require.Contains(t, text, "CLAUDE")
+	require.Contains(t, text, "usage API returned HTTP 401")
+	require.NotContains(t, text, "CODEX")
 }

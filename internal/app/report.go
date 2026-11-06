@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -8,14 +9,30 @@ import (
 
 type window map[string]any
 
+// windows is one provider's usage, or the error that replaced it.
 type windows struct {
-	FiveHour window `json:"five_hour"`
-	SevenDay window `json:"seven_day"`
+	FiveHour  window  `json:"five_hour"`
+	SevenDay  window  `json:"seven_day"`
+	Error     *string `json:"error"`
+	signedOut bool
+}
+
+func failed(err error) windows {
+	message := err.Error()
+	return windows{Error: &message, signedOut: errors.Is(err, errSignedOut)}
 }
 
 type report struct {
 	Claude windows `json:"claude"`
 	Codex  windows `json:"codex"`
+}
+
+// err reports why nothing can be shown when every provider failed.
+func (r report) err() error {
+	if r.Claude.Error == nil || r.Codex.Error == nil {
+		return nil
+	}
+	return fmt.Errorf("no usage to show\nClaude: %s\nCodex: %s", *r.Claude.Error, *r.Codex.Error)
 }
 
 func countdown(remaining time.Duration) string {

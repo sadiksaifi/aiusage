@@ -1,10 +1,8 @@
 package app
 
-import (
-	"context"
-	"fmt"
-)
+import "context"
 
+// claudeKeychain reports no Keychain login on Linux, where Claude Code uses .credentials.json.
 func claudeKeychain(context.Context, string) ([]byte, error) {
-	return nil, fmt.Errorf("credentials for Claude must be stored in .credentials.json on Linux")
+	return nil, errSignedOut
 }

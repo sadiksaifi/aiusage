@@ -20,25 +20,15 @@ type login struct {
 	err     error
 }
 
-type credentials struct {
-	claude login
-	codex  login
-}
-
-func loadCredentials(ctx context.Context) credentials {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		err = fmt.Errorf("find home directory: %w", err)
-		return credentials{claude: login{err: err}, codex: login{err: err}}
-	}
-	return credentials{claude: loadClaude(ctx, home), codex: loadCodex(home)}
-}
-
 // loadClaude reads the Keychain first on macOS because Claude Code writes logins there.
 // A .credentials.json file there can be a stale leftover, so it is only a fallback.
-func loadClaude(ctx context.Context, home string) login {
+func loadClaude(ctx context.Context) login {
 	dir := os.Getenv("CLAUDE_CONFIG_DIR")
 	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return login{err: fmt.Errorf("find home directory: %w", err)}
+		}
 		dir = filepath.Join(home, ".claude")
 	}
 	source := "macOS Keychain"
@@ -67,15 +57,20 @@ func loadClaude(ctx context.Context, home string) login {
 	if err := json.Unmarshal(data, &claude); err != nil {
 		return login{err: fmt.Errorf("invalid credentials in %s; run `claude` to sign in", source)}
 	}
+	// Claude Code keeps other data in the same store after logout.
 	if claude.OAuth.AccessToken == "" {
-		return login{err: fmt.Errorf("no access token in %s; run `claude` to sign in", source)}
+		return login{err: fmt.Errorf("%w; run `claude` to sign in", errSignedOut)}
 	}
 	return login{token: claude.OAuth.AccessToken, source: source}
 }
 
-func loadCodex(home string) login {
+func loadCodex() login {
 	dir := os.Getenv("CODEX_HOME")
 	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return login{err: fmt.Errorf("find home directory: %w", err)}
+		}
 		dir = filepath.Join(home, ".codex")
 	}
 	file := filepath.Join(dir, "auth.json")

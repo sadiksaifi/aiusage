@@ -27,7 +27,7 @@ func TestCollectPreservesFieldsAndAddsResetCountdown(t *testing.T) {
 	}))
 	defer server.Close()
 	c := client{http: server.Client(), claudeURL: server.URL + "/claude", codexURL: server.URL + "/codex"}
-	report := c.collect(context.Background(), credentials{claude: login{token: "claude-token"}, codex: login{token: "codex-token", account: "account"}}, now)
+	report := c.collect(context.Background(), stored(login{token: "claude-token"}), stored(login{token: "codex-token", account: "account"}), now)
 	require.NoError(t, report.err())
 	require.JSONEq(t, `{"claude":{"five_hour":{"utilization":84,"resets_at":"Thu 22 Oct, 01:02","resets_in":"1h 2m","used_dollars":0,"locked_reason":null},"seven_day":null,"error":null},"codex":{"five_hour":null,"seven_day":{"used_percent":20,"resets_at":"Fri 23 Oct, 00:02","resets_in":"1d 2m"},"error":null}}`, mustJSON(t, report))
 }
@@ -43,7 +43,7 @@ func TestCollectKeepsOtherProviderWhenOneIsRejected(t *testing.T) {
 	}))
 	defer server.Close()
 	c := client{http: server.Client(), claudeURL: server.URL + "/claude", codexURL: server.URL + "/codex"}
-	report := c.collect(context.Background(), credentials{claude: login{source: "macOS Keychain"}, codex: login{source: "auth.json"}}, time.Now())
+	report := c.collect(context.Background(), stored(login{source: "macOS Keychain"}), stored(login{source: "auth.json"}), time.Now())
 	require.NoError(t, report.err())
 	require.NotNil(t, report.Claude.Error)
 	require.Contains(t, *report.Claude.Error, "401")
@@ -60,14 +60,18 @@ func TestCollectFailsOnlyWhenEveryProviderFails(t *testing.T) {
 	}))
 	defer server.Close()
 	c := client{http: server.Client(), claudeURL: server.URL, codexURL: server.URL}
-	signedOut := credentials{codex: login{err: fmt.Errorf("%w; run `codex login`", errSignedOut)}}
-	err := c.collect(context.Background(), signedOut, time.Now()).err()
+	signedOut := login{err: fmt.Errorf("%w; run `codex login`", errSignedOut)}
+	err := c.collect(context.Background(), stored(login{}), stored(signedOut), time.Now()).err()
 	require.EqualError(t, err, "no usage to show\nClaude: usage API returned HTTP 429; rate limited; retry in 5m\nCodex: not signed in; run `codex login`")
 }
 
 func TestMissingCodexLoginCountsAsSignedOut(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
-	require.ErrorIs(t, loadCodex(t.TempDir()).err, errSignedOut)
+	require.ErrorIs(t, loadCodex().err, errSignedOut)
+}
+
+func stored(auth login) func() login {
+	return func() login { return auth }
 }
 
 func TestCountdownBoundaries(t *testing.T) {

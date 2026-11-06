@@ -30,7 +30,7 @@ func Run(ctx context.Context) error {
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), 35*time.Second)
 			defer cancel()
-			data := newClient().collect(ctx, loadCredentials(ctx), time.Now())
+			data := newClient().collect(ctx, func() login { return loadClaude(ctx) }, loadCodex, time.Now())
 			if err := data.err(); err != nil {
 				return err
 			}

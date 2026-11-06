@@ -31,4 +31,4 @@ aiusage -v
 
 Sign in to Claude Code, Codex, or both first. On macOS, Claude credentials come from the Keychain, with `~/.claude/.credentials.json` as a fallback; on Linux, from that file. Codex uses `~/.codex/auth.json` with file credential storage. API-key-only logins are unsupported.
 
-aiusage shows every provider you are signed in to and skips the others. When one provider fails, its error appears in place of its usage, and the other provider still shows. `--json` reports that error in the provider's `error` field. aiusage exits with an error only when no provider has usage to show.
+aiusage shows every provider you are signed in to and skips the others. When one provider fails, its error appears in place of its usage, and the other provider still shows. `--json` reports that error in the provider's `error` field. aiusage exits with an error only when every provider fails.

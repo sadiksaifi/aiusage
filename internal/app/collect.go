@@ -76,12 +76,13 @@ func retryAfter(value string) string {
 	return "in " + countdown(wait)
 }
 
-// collect fetches each provider independently, so one failure leaves the other's usage intact.
-func (c client) collect(ctx context.Context, auth credentials, now time.Time) report {
+// collect loads and fetches each provider independently, so a failure or a slow
+// credential store, such as a Keychain unlock prompt, leaves the other's usage intact.
+func (c client) collect(ctx context.Context, claude, codex func() login, now time.Time) report {
 	var result report
 	var wg sync.WaitGroup
-	wg.Go(func() { result.Claude = c.claude(ctx, auth.claude, now) })
-	wg.Go(func() { result.Codex = c.codex(ctx, auth.codex, now) })
+	wg.Go(func() { result.Claude = c.claude(ctx, claude(), now) })
+	wg.Go(func() { result.Codex = c.codex(ctx, codex(), now) })
 	wg.Wait()
 	return result
 }
